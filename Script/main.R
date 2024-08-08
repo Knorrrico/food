@@ -9,47 +9,6 @@
 library(striprtf)
 library(stringr)
 
-###
-####################################
-
-txt <- extract_article("data/rtf/Dateien (5).txt")
-txt1 <- extract_row(2)
-txt1 <- extract_elements(txt1)
-
-#####################################
-
-file_path <- "data/rtf/Dateien (5).RTF"
-
-text <- read_rtf(file_path)
-
-docs <-  str_split_1(text, "End of Document")
-
-doc1 <- docs[1]
-
-#####################################
-
-txt <- readLines("data/rtf/Dateien (5).txt")
-
-txt <- paste(txt, collapse = "\n")
-
-txt <- str_split_1(txt, "End of Document")
-
-#####################################
-
-txt1 <- txt[1]
-
-txt1 <- str_split_1(txt1, "\\n")
-
-txt1 <- txt1[!txt1 == ""]
-
-###################################
-
-body <- txt1[(which(txt1 == "Body")+1):(length(txt1))]
-
-headline <- txt1[1]
-
-###
-
 #Split into newsarticles
 extract_article <- function(file_name){
   txt <- readLines(file_name)
