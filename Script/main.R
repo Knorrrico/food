@@ -151,3 +151,17 @@ all_parsed_articles <- parse_all_files_in_directory(directory)
 
 # Print the extracted elements of all articles
 print(all_parsed_articles)
+
+articles_df <- do.call(rbind, lapply(all_parsed_articles, function(x) {
+  data.frame(
+    headline = x$headline,
+    body = paste(x$body, collapse = " "),  # Concatenating all elements in the body
+    source = x$source,
+    date = x$date,
+    length = x$length,
+    stringsAsFactors = FALSE
+  )
+}))
+
+write.csv(articles_df, file = "my_list.csv", row.names = FALSE)
+
