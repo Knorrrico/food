@@ -115,4 +115,4 @@ articles_df <- do.call(rbind, lapply(all_parsed_articles, function(x) {
 }))
 
 # Write the data frame to a CSV file
-write.csv(articles_df, file = "my_list.csv", row.names = FALSE)
+write.csv(articles_df, file = "data/foodcrime_articles.csv", row.names = FALSE)
