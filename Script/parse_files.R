@@ -1,14 +1,14 @@
-# Load required libraries
+# load libraries ================================================================
 library(striprtf)
 library(stringr)
 
-# Function to convert a single RTF file to plain text
+# converting one .rtf to txt file ============================================
 convert_rtf_to_txt <- function(input_file, output_file) {
   rtf_text <- read_rtf(input_file)
   writeLines(rtf_text, output_file)
 }
 
-# Function to convert all RTF files in a directory to plain text
+# convert all .rtf files in a directory =====================================
 convert_all_rtf_in_directory <- function(input_directory, output_directory) {
   rtf_files <- list.files(input_directory, pattern = "\\.RTF$", full.names = TRUE)
   
@@ -22,23 +22,23 @@ convert_all_rtf_in_directory <- function(input_directory, output_directory) {
   }
 }
 
-# Example usage for converting RTF files to TXT
-input_directory <- "data/rtf"
-output_directory <- "data/txt"
+## convert articles to .txt files ============================================
+input_directory <- "data/rtftest"  #change directory to "data/rtf" for full dataset
+output_directory <- "data/txttest" #change directory to "data/txt" for full dataset
 convert_all_rtf_in_directory(input_directory, output_directory)
 
-# Function to extract elements from a single article
+# extract elements headline, body, source, date, length from each article ==
 extract_elements <- function(article_txt) {
   article_lines <- str_split_1(article_txt, "\\n")
   article_clean <- article_lines[!article_lines == ""]
   
-  # Trim whitespace from each line
+  # remove whitespace from each line 
   article_clean <- trimws(article_clean)
   
-  # Identify the headline
+  # headline is the first line
   headline <- article_clean[1]
   
-  # If there is a blank line after the headline, adjust the indices
+  # adjust indice for uniform extraction
   if (article_clean[2] == "") {
     source <- article_clean[3]
     date <- article_clean[4]
@@ -49,29 +49,28 @@ extract_elements <- function(article_txt) {
     body_start_index <- 4
   }
   
-  # Find the index of the "Body" section
+  # content of the article from "Body" to "Length"
   body_index <- which(tolower(article_clean) == "body")
   if (length(body_index) == 0) {
-    message("Body start pattern not found in the article")
-    body_index <- length(article_clean) # Default to the end if "Body" is not found
+    body_index <- length(article_clean) # "Body" not found, use the whole article
   }
   
-  # Find the index of the line that starts with "Length:"
+  # find length of the article
   length_index <- grep("^Length:", article_clean)
   length_value <- if (length(length_index) > 0) {
     article_clean[length_index]
   } else {
-    message("Length pattern not found in the article")
     NA
   }
   
-  # Extract the body of the article
+  # extract content of the article
   body <- article_clean[(body_index + 1):(length(article_clean))]
   
   return(list(headline = headline, body = body, source = source, date = date, length = length_value))
 }
 
-# Function to parse a file and extract elements from each article
+
+# parse single file ========================================================
 parse_file <- function(file_name) {
   txt <- readLines(file_name)
   txt <- paste(txt, collapse = "\n")
@@ -87,7 +86,7 @@ parse_file <- function(file_name) {
   return(parsed_articles)
 }
 
-# Function to parse all files in a directory
+# parse all .txt files in a directory =======================================
 parse_all_files_in_directory <- function(directory) {
   txt_files <- list.files(directory, pattern = "\\.txt$", full.names = TRUE)
   
@@ -98,11 +97,10 @@ parse_all_files_in_directory <- function(directory) {
   return(all_parsed_articles)
 }
 
-# Example usage for parsing TXT files
 directory <- "data/txt"
 all_parsed_articles <- parse_all_files_in_directory(directory)
 
-# Convert the parsed articles to a data frame
+# convert to df and write to csv ============================================
 articles_df <- do.call(rbind, lapply(all_parsed_articles, function(x) {
   data.frame(
     headline = x$headline,
@@ -114,5 +112,5 @@ articles_df <- do.call(rbind, lapply(all_parsed_articles, function(x) {
   )
 }))
 
-# Write the data frame to a CSV file
-write.csv(articles_df, file = "data/foodcrime_articles.csv", row.names = FALSE)
+# Write the data frame to a CSV file ========================================
+write.csv(articles_df, file = "data/foodcrime_articles_test.csv", row.names = FALSE)

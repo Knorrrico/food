@@ -6,24 +6,29 @@ library(quanteda.textmodels)
 library(igraph)
 library(ggraph)
 library(seededlda)
+library(LDAvis)
+library(reshape2)
 
-## Term Frequency and Keywords ================================================
-
-# Assuming 'dfm' is your document-feature matrix
-term_freq <- as.data.frame(textstat_frequency(food_corpus$dfm))
+# term frequency and keyness analysis ==========================================
+term_freq <- as.data.frame(textstat_frequency(corpus_food$dfm))
 term_freq <- term_freq[order(-term_freq$frequency), ]
 head(term_freq)  # View the top terms by frequency
 
-# Generate a comparison word cloud
-textplot_wordcloud(food_corpus$dfm, min_count = 50, color = RColorBrewer::brewer.pal(8, "Dark2"))
+## wordcloud
+textplot_wordcloud(corpus_food$dfm, 
+                   min_count = 40, 
+                   max_words = 100, 
+                   color = brewer.pal(11, "Dark2"),
+                   min_size = 1,  
+                   max_size = 2.5)
 
-# Perform keyness analysis using the grouped DFM
+
+## keyness analysis ============================================================
 keyness_result <- textstat_keyness(dfm_grouped, target = "food")
 
-# Extract top 20 keyness results
+## top n key terms
 top_keyness <- head(keyness_result, 20)
 
-# Plot keyness results using ggplot2
 ggplot(top_keyness, aes(x = reorder(feature, -n_target), y = n_target)) +
   geom_point() + 
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
@@ -31,86 +36,90 @@ ggplot(top_keyness, aes(x = reorder(feature, -n_target), y = n_target)) +
   ylab("Target Frequency") +
   ggtitle("Top 20 Key Terms in 'Food' Articles")
 
-# Visualize the keyness analysis with textplot_keyness
+## visualize keyness
 textplot_keyness(keyness_result)
 
+# term over time plot ==========================================================
 plot_term_over_time <- function(dfm_corpus, keyword) {
   
-  # Ensure the date variable is in the correct format in docvars
-  # Assuming date is already in the correct format, this step is just to be sure
+  # Ensure the date column is in proper datetime format
   docvars(dfm_corpus, "date") <- as.POSIXct(docvars(dfm_corpus, "date"))
   
-  # Group the DFM by week (or other desired time interval)
-  dfm_by_week <- dfm_group(dfm_corpus, 
-                           groups = format(docvars(dfm_corpus, "date"), "%Y-%U"))
+  # group by month
+  dfm_by_month <- dfm_group(dfm_corpus, 
+                            groups = format(docvars(dfm_corpus, "date"), "%Y-%m"))
   
-  # Get the token frequency over time for the specified keyword
-  token_frequency_over_time <- dfm_by_week[, keyword]
+  # get frequency of the keyword over time
+  token_frequency_over_time <- dfm_by_month[, keyword]
   
-  # Convert the DFM to a data frame for plotting
+  # convert to data frame
   token_freq_df <- convert(token_frequency_over_time, to = "data.frame")
   
-  # Plot the frequency of the keyword over time
+  # convert doc_id back to date format
+  token_freq_df$doc_id <- as.Date(paste0(token_freq_df$doc_id, "-01"), format = "%Y-%m-%d")
+  
   ggplot(token_freq_df, aes(x = doc_id, y = as.numeric(!!sym(keyword)), group = 1)) +
-    geom_line() +
-    xlab("Week") +
+    geom_line(color = "black", size = 0.7) +  
+    geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"), color = "blue", se = FALSE, size = 0.8) +  # Smoother trend with GAM
+    xlab("Date") +
     ylab(paste("Frequency of '", keyword, "'", sep = "")) +
-    ggtitle(paste("Usage of the token '", keyword, "' over weeks", sep = "")) +
+    ggtitle(paste("Usage of the token '", keyword, "' over time", sep = "")) +
     theme_minimal() +
-    theme(axis.text.x = element_blank())
+    scale_x_date(date_labels = "%b %Y", date_breaks = "1 month") +  
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),  
+      panel.grid.major = element_line(color = "gray80"),  
+      panel.grid.minor = element_blank(),  
+      panel.background = element_rect(fill = "white"),  
+      plot.title = element_text(hjust = 0.5, size = 14, face = "bold")  
+    )
 }
 
-# Example usage of the adapted function
-plot_term_over_time(food_corpus$dfm, "food")
+plot_term_over_time(corpus_food$dfm, "pettovello")
 
-#n-gram network
-
-# Create bigrams from tokens
-tokens_bigrams <- tokens_ngrams(food_corpus$tokens, n = 2)
-
-# Create a DFM for the bigrams
+#n-gram network ===============================================================
+# get bigram frequencies
+tokens_bigrams <- tokens_ngrams(corpus_food$tokens, n = 2)
 dfm_bigrams <- dfm(tokens_bigrams)
-
-# Calculate bigram frequencies
 bigram_freq <- textstat_frequency(dfm_bigrams)
 
-# Filter for the most frequent bigrams (adjust the threshold as needed)
-top_bigrams <- bigram_freq[order(-bigram_freq$frequency), ][1:50, ]
+# filter top 100 bigrams
+top_bigrams <- bigram_freq[order(-bigram_freq$frequency), ][1:100, ]
 
-# Create an edge list for the bigrams
+# create edges for bigram network
 bigram_edges <- data.frame(
   from = sub("_.*", "", top_bigrams$feature),
   to = sub(".*_", "", top_bigrams$feature),
   weight = top_bigrams$frequency
 )
 
-# Create a graph object
+# create graph from edges
 bigram_graph <- graph_from_data_frame(bigram_edges, directed = FALSE)
 
-# Plot the bigram network with adjusted layout and styling
-set.seed(123)  # For reproducibility
-ggraph(bigram_graph, layout = "fr") +  # Fruchterman-Reingold layout
+# plot bigram network
+set.seed(123)
+ggraph(bigram_graph, layout = "kk") +  
   geom_edge_link(aes(edge_alpha = weight, edge_width = weight), color = "grey", show.legend = FALSE) +
   geom_node_point(color = "skyblue", size = 5) +
-  geom_node_text(aes(label = name), vjust = 1, hjust = 1, repel = TRUE) +
+  geom_node_text(aes(label = name), repel = TRUE, size = 3) +  
   theme_void() +
-  labs(title = "Bigram Network of Most Frequent Word Pairs") +
+  labs(title = "Bigram Network of Top 100 Most Frequent Word Pairs") +
   theme(
-    plot.title = element_text(hjust = 0.5)
+    plot.title = element_text(hjust = 0.5, size = 14, face = "bold")
   ) +
   ggraph::theme_graph() +
-  coord_fixed()  # Ensures the aspect ratio is fixed to prevent distortion
+  coord_fixed()  
 
-###
+# find words related to keyterms ===============================================
 related_keyterms <- function(corpus_tokens, keyterms, window_size = 10) {
   
-  # Keep tokens within window_size of keyterms
+  # keep tokens within window_size of keyterms
   tokens_inside <- tokens_keep(corpus_tokens, pattern = keyterms, window = window_size)
   
-  # Remove keyterms from tokens_inside
+  # remove keyterms from tokens_inside
   tokens_inside <- tokens_remove(tokens_inside, pattern = keyterms)
   
-  # Remove tokens within window_size of keyterms
+  # remove tokens within window_size of keyterms
   tokens_outside <- tokens_remove(corpus_tokens, pattern = keyterms, window = window_size)
   
   # Create DFMs
@@ -124,47 +133,66 @@ related_keyterms <- function(corpus_tokens, keyterms, window_size = 10) {
   return(related_to_keyterms)
 }
 
-
-# Apply the function to the tokens in your food corpus
 result <- related_keyterms(corpus_food$tokens, "food")
 
-# Display the top 50 related terms
 head(result, 50)
 
-###
-
-# Define a range of k values to test
+# topic modeling ==============================================================
+# test different number of topics
+# define a range of k values 
 k_values <- seq(2, 30, by = 2)
 
 perplexities <- numeric(length(k_values))
 divergences <- numeric(length(k_values))
+coherences <- numeric(length(k_values)) 
 
-# Assuming dfm_topics is already created from your corpus
 dfm_topics <- corpus_food$dfm |>  
   dfm_trim(min_termfreq = 0.80, termfreq_type = "quantile",
            max_docfreq = 0.10, docfreq_type = "prop")
 
-# Loop over each k value
+calculate_coherence <- function(model, dfm, top_n = 10) {
+  top_terms <- terms(model, top_n)
+  coherence_scores <- numeric(ncol(top_terms))
+  
+  for (topic_idx in seq_len(ncol(top_terms))) {
+    terms_in_topic <- top_terms[, topic_idx]
+    term_combinations <- combn(terms_in_topic, 2)
+    
+    score <- 0
+    for (j in seq_len(ncol(term_combinations))) {
+      term1 <- term_combinations[1, j]
+      term2 <- term_combinations[2, j]
+      
+      term1_count <- sum(dfm[, term1])
+      term2_count <- sum(dfm[, term2])
+      co_occurrence <- sum(dfm[, term1] & dfm[, term2])
+      
+      if (co_occurrence > 0) {
+        score <- score + log((co_occurrence + 1) / term1_count)
+      }
+    }
+    coherence_scores[topic_idx] <- score
+  }
+  return(mean(coherence_scores))  
+}
+
+# loop over different k values 
 for (i in seq_along(k_values)) {
   k <- k_values[i]
   
-  # Set a seed for reproducibility
   set.seed(2023)
   
-  # Fit the LDA model
   lda_model <- textmodel_lda(dfm_topics, k = k)
   
-  # Calculate perplexity
+  # calculate perplexity, divergence, and coherence
   perplexities[i] <- perplexity(lda_model)
-  
-  # Calculate divergence
   divergences[i] <- divergence(lda_model)
+  coherences[i] <- calculate_coherence(lda_model, dfm_topics, top_n = 10)
 }
 
-# Combine the results into a data frame
-results <- data.frame(k = k_values, perplexity = perplexities, divergence = divergences)
+results <- data.frame(k = k_values, perplexity = perplexities, divergence = divergences, coherence = coherences)
 
-# Plot perplexity over different k values
+# plot perplexity over different k values
 ggplot(results, aes(x = k, y = perplexity)) +
   geom_line() +
   geom_point() +
@@ -172,7 +200,7 @@ ggplot(results, aes(x = k, y = perplexity)) +
   ylab("Perplexity") +
   ggtitle("Perplexity vs Number of Topics")
 
-# Plot divergence over different k values
+# plot divergence over different k values
 ggplot(results, aes(x = k, y = divergence)) +
   geom_line() +
   geom_point() +
@@ -180,44 +208,42 @@ ggplot(results, aes(x = k, y = divergence)) +
   ylab("Divergence") +
   ggtitle("Divergence vs Number of Topics")
 
-#############################
+# plot coherence over different k values
+ggplot(results, aes(x = k, y = coherence)) +
+  geom_line() +
+  geom_point() +
+  xlab("Number of Topics (k)") +
+  ylab("Coherence") +
+  ggtitle("Coherence vs Number of Topics")
 
-# Trim the DFM
-dfm_topics <- corpus_food$dfm |>  
-  dfm_trim(min_termfreq = 0.80, termfreq_type = "quantile",
-           max_docfreq = 0.10, docfreq_type = "prop")
+### visual comparison of distribution of topics in data_food
 
-# Fit the LDA model
+# Fit model with the optimal number of topics (k = 10)
 set.seed(2023)
 topics_lda <- textmodel_lda(dfm_topics, k = 10)
 
+# Extract top terms
 terms_lda <- terms(topics_lda, 100)
 
-# Extract topics for each document
+# Assign topics to documents
 topics_document <- topics(topics_lda)
 
-# Convert the topics to a data frame with IDs
+# Convert topics to data frame with document IDs
 lda_topics_df <- data.frame(id = names(topics_document), topic = topics_document)
 
-# Merge topics back into the original dataset using the consistent IDs
+# Merge topics with the original dataset (assumes data_food has an 'id' column)
 merged_topic <- left_join(data_food, lda_topics_df, by = "id")
 
-# Extract the topic distribution for each document
-topic_distributions <- topics(lda_model)
-
-# Count the occurrences of each topic
+# Distribution of topics across documents
+topic_distributions <- topics(topics_lda)
 topic_counts <- table(topic_distributions)
-
-# Calculate the percentage of each topic
 topic_percentages <- prop.table(topic_counts) * 100
-
-# Convert the topic percentages to a data frame
 topic_df <- data.frame(
   Topic = names(topic_percentages),
   Percentage = as.numeric(topic_percentages)
 )
 
-# Create the pie chart
+# pie chart of topic distribution
 ggplot(topic_df, aes(x = "", y = Percentage, fill = Topic)) +
   geom_bar(width = 1, stat = "identity") +
   coord_polar("y", start = 0) +
@@ -225,4 +251,10 @@ ggplot(topic_df, aes(x = "", y = Percentage, fill = Topic)) +
   ggtitle("Topic Distribution in LDA Model") +
   theme(legend.position = "right")
 
+# interactive visualization =================================================
+
+vis_data <- createJSON(phi = topics_lda$phi, theta = topics_lda$theta, 
+                       doc.length = rowSums(dfm_topics), vocab = colnames(dfm_topics))
+
+serVis(vis_data)
 
